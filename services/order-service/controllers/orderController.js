@@ -113,12 +113,14 @@ const createOrder = async (req, res, next) => {
       await Cart.findOneAndUpdate({ user: req.user._id }, { items: [] });
     }
 
-    // Send confirmation email
-    try {
-      const { subject, html } = emailTemplates.orderConfirmation(order, req.user);
-      await sendEmail({ to: req.user.email, subject, html });
-    } catch (e) {
-      logger.error(`Order confirmation email failed: ${e.message}`);
+    // Stripe: email sent via webhook after payment_intent.succeeded
+    if (paymentMethod !== 'stripe') {
+      try {
+        const { subject, html } = emailTemplates.orderConfirmation(order, req.user);
+        await sendEmail({ to: req.user.email, subject, html });
+      } catch (e) {
+        logger.error(`Order confirmation email failed: ${e.message}`);
+      }
     }
 
     logger.info(`Order created: ${order.orderNumber} by ${req.user.email}`);
@@ -249,6 +251,7 @@ const updateOrderStatus = async (req, res, next) => {
     }
 
     await order.save();
+
     return ApiResponse.success(res, order, `Order status updated to ${status}`);
   } catch (err) {
     next(err);
@@ -275,7 +278,7 @@ const stripeWebhook = async (req, res) => {
 
   if (event.type === 'payment_intent.succeeded') {
     const pi = event.data.object;
-    await Order.findOneAndUpdate(
+    const order = await Order.findOneAndUpdate(
       { 'paymentResult.id': pi.id },
       {
         paymentStatus: 'paid',
@@ -284,8 +287,18 @@ const stripeWebhook = async (req, res) => {
         'paymentResult.receiptUrl': pi.charges?.data[0]?.receipt_url,
         $push: { statusHistory: { status: 'confirmed', note: 'Payment received' } },
         status: 'confirmed',
+      },
+      { new: true }
+    ).populate('user', 'name email');
+
+    if (order?.user?.email) {
+      try {
+        const { subject, html } = emailTemplates.orderConfirmation(order, order.user);
+        await sendEmail({ to: order.user.email, subject, html });
+      } catch (e) {
+        logger.error(`Order confirmation email failed for order ${order._id}: ${e.message}`);
       }
-    );
+    }
   }
 
   if (event.type === 'payment_intent.payment_failed') {

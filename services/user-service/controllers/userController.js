@@ -1,5 +1,6 @@
 const User = require('../models/User');
 const Product = require('../models/Product');
+require('../models/Category');
 const ApiError = require('../utils/ApiError');
 const ApiResponse = require('../utils/ApiResponse');
 const slugify = require('slugify');

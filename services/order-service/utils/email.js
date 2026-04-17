@@ -1,13 +1,19 @@
 const nodemailer = require('nodemailer');
 const logger = require('./logger');
 
-const createTransporter = () =>
-  nodemailer.createTransport({
+const createTransporter = () => {
+  const port = parseInt(process.env.SMTP_PORT) || 587;
+  const secure = process.env.SMTP_SECURE === 'true' || port === 465;
+
+  return nodemailer.createTransport({
     host: process.env.SMTP_HOST || 'smtp.gmail.com',
-    port: parseInt(process.env.SMTP_PORT) || 587,
-    secure: process.env.SMTP_PORT === '465',
+    port,
+    secure,
+    requireTLS: !secure,
     auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+    tls: { rejectUnauthorized: process.env.NODE_ENV === 'production' },
   });
+};
 
 const sendEmail = async ({ to, subject, html, text }) => {
   try {
