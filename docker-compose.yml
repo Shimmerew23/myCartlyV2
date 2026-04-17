@@ -1,0 +1,323 @@
+version: '3.9'
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Shared env fragment — overridden per service where needed
+# ─────────────────────────────────────────────────────────────────────────────
+x-common-env: &common-env
+  NODE_ENV: production
+  MONGODB_URI: mongodb://admin:CartLypass@mongo:27017/CartLy_ecommerce?authSource=admin
+  REDIS_URL: redis://:CartLyredis@redis:6379
+
+x-db-depends: &db-depends
+  depends_on:
+    mongo:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+
+x-mongo-only-depends: &mongo-only-depends
+  depends_on:
+    mongo:
+      condition: service_healthy
+
+services:
+  # ───────────────────────────────────────────
+  # MongoDB
+  # ───────────────────────────────────────────
+  mongo:
+    image: mongo:7.0
+    container_name: CartLy_mongo
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: CartLypass
+      MONGO_INITDB_DATABASE: CartLy_ecommerce
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+      - ./mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
+    networks:
+      - CartLy_net
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ───────────────────────────────────────────
+  # Redis
+  # ───────────────────────────────────────────
+  redis:
+    image: redis:7.2-alpine
+    container_name: CartLy_redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --requirepass CartLyredis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - CartLy_net
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "CartLyredis", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # ───────────────────────────────────────────
+  # auth-service  (port 3001)
+  # ───────────────────────────────────────────
+  auth-service:
+    build:
+      context: ./services/auth-service
+      dockerfile: Dockerfile
+    container_name: CartLy_auth
+    restart: unless-stopped
+    env_file: ./services/auth-service/.env
+    environment:
+      <<: *common-env
+      PORT: 3001
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./services/auth-service/logs:/app/logs
+    <<: *db-depends
+    networks:
+      - CartLy_net
+
+  # ───────────────────────────────────────────
+  # user-service  (port 3002)
+  # ───────────────────────────────────────────
+  user-service:
+    build:
+      context: ./services/user-service
+      dockerfile: Dockerfile
+    container_name: CartLy_user
+    restart: unless-stopped
+    env_file: ./services/user-service/.env
+    environment:
+      <<: *common-env
+      PORT: 3002
+    ports:
+      - "3002:3002"
+    volumes:
+      - ./services/user-service/logs:/app/logs
+    <<: *mongo-only-depends
+    networks:
+      - CartLy_net
+
+  # ───────────────────────────────────────────
+  # product-service  (port 3003)
+  # ───────────────────────────────────────────
+  product-service:
+    build:
+      context: ./services/product-service
+      dockerfile: Dockerfile
+    container_name: CartLy_product
+    restart: unless-stopped
+    env_file: ./services/product-service/.env
+    environment:
+      <<: *common-env
+      PORT: 3003
+    ports:
+      - "3003:3003"
+    volumes:
+      - ./services/product-service/logs:/app/logs
+    <<: *db-depends
+    networks:
+      - CartLy_net
+
+  # ───────────────────────────────────────────
+  # order-service  (port 3004)
+  # ───────────────────────────────────────────
+  order-service:
+    build:
+      context: ./services/order-service
+      dockerfile: Dockerfile
+    container_name: CartLy_order
+    restart: unless-stopped
+    env_file: ./services/order-service/.env
+    environment:
+      <<: *common-env
+      PORT: 3004
+      NOTIFICATION_SERVICE_URL: http://notification-service:3009
+    ports:
+      - "3004:3004"
+    volumes:
+      - ./services/order-service/logs:/app/logs
+    <<: *mongo-only-depends
+    networks:
+      - CartLy_net
+
+  # ───────────────────────────────────────────
+  # cart-service  (port 3005)
+  # ───────────────────────────────────────────
+  cart-service:
+    build:
+      context: ./services/cart-service
+      dockerfile: Dockerfile
+    container_name: CartLy_cart
+    restart: unless-stopped
+    env_file: ./services/cart-service/.env
+    environment:
+      <<: *common-env
+      PORT: 3005
+    ports:
+      - "3005:3005"
+    volumes:
+      - ./services/cart-service/logs:/app/logs
+    <<: *mongo-only-depends
+    networks:
+      - CartLy_net
+
+  # ───────────────────────────────────────────
+  # review-service  (port 3006)
+  # ───────────────────────────────────────────
+  review-service:
+    build:
+      context: ./services/review-service
+      dockerfile: Dockerfile
+    container_name: CartLy_review
+    restart: unless-stopped
+    env_file: ./services/review-service/.env
+    environment:
+      <<: *common-env
+      PORT: 3006
+    ports:
+      - "3006:3006"
+    volumes:
+      - ./services/review-service/logs:/app/logs
+    <<: *mongo-only-depends
+    networks:
+      - CartLy_net
+
+  # ───────────────────────────────────────────
+  # warehouse-service  (port 3007)
+  # ───────────────────────────────────────────
+  warehouse-service:
+    build:
+      context: ./services/warehouse-service
+      dockerfile: Dockerfile
+    container_name: CartLy_warehouse
+    restart: unless-stopped
+    env_file: ./services/warehouse-service/.env
+    environment:
+      <<: *common-env
+      PORT: 3007
+    ports:
+      - "3007:3007"
+    volumes:
+      - ./services/warehouse-service/logs:/app/logs
+    <<: *mongo-only-depends
+    networks:
+      - CartLy_net
+
+  # ───────────────────────────────────────────
+  # admin-service  (port 3008)
+  # ───────────────────────────────────────────
+  admin-service:
+    build:
+      context: ./services/admin-service
+      dockerfile: Dockerfile
+    container_name: CartLy_admin
+    restart: unless-stopped
+    env_file: ./services/admin-service/.env
+    environment:
+      <<: *common-env
+      PORT: 3008
+    ports:
+      - "3008:3008"
+    volumes:
+      - ./services/admin-service/logs:/app/logs
+    <<: *db-depends
+    networks:
+      - CartLy_net
+
+  # ───────────────────────────────────────────
+  # notification-service  (port 3009)
+  # ───────────────────────────────────────────
+  notification-service:
+    build:
+      context: ./services/notification-service
+      dockerfile: Dockerfile
+    container_name: CartLy_notification
+    restart: unless-stopped
+    env_file: ./services/notification-service/.env
+    environment:
+      NODE_ENV: production
+      PORT: 3009
+    ports:
+      - "3009:3009"
+    volumes:
+      - ./services/notification-service/logs:/app/logs
+    networks:
+      - CartLy_net
+
+  # ───────────────────────────────────────────
+  # upload-service  (port 3010)
+  # ───────────────────────────────────────────
+  upload-service:
+    build:
+      context: ./services/upload-service
+      dockerfile: Dockerfile
+    container_name: CartLy_upload
+    restart: unless-stopped
+    env_file: ./services/upload-service/.env
+    environment:
+      NODE_ENV: production
+      PORT: 3010
+    ports:
+      - "3010:3010"
+    volumes:
+      - ./services/upload-service/logs:/app/logs
+    networks:
+      - CartLy_net
+
+  # ───────────────────────────────────────────
+  # Frontend (React / Vite)
+  # ───────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: CartLy_frontend
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    networks:
+      - CartLy_net
+
+  # ───────────────────────────────────────────
+  # Nginx — API Gateway
+  # ───────────────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    container_name: CartLy_nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - auth-service
+      - user-service
+      - product-service
+      - order-service
+      - cart-service
+      - review-service
+      - warehouse-service
+      - admin-service
+      - upload-service
+      - frontend
+    networks:
+      - CartLy_net
+
+volumes:
+  mongo_data:
+  redis_data:
+
+networks:
+  CartLy_net:
+    driver: bridge

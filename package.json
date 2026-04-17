@@ -1,0 +1,14 @@
+{
+  "name": "cartly-microservices",
+  "version": "1.0.0",
+  "description": "CartLy — MERN microservices monorepo",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently --kill-others-on-fail --prefix-colors \"cyan,yellow,green,magenta,blue,red,white,gray,bgCyan,bgYellow,bgGreen\" --prefix \"[{name}]\" --names \"frontend,auth,user,product,order,cart,review,warehouse,admin,notification,upload\" \"npm run dev --prefix frontend\" \"npm run dev --prefix services/auth-service\" \"npm run dev --prefix services/user-service\" \"npm run dev --prefix services/product-service\" \"npm run dev --prefix services/order-service\" \"npm run dev --prefix services/cart-service\" \"npm run dev --prefix services/review-service\" \"npm run dev --prefix services/warehouse-service\" \"npm run dev --prefix services/admin-service\" \"npm run dev --prefix services/notification-service\" \"npm run dev --prefix services/upload-service\"",
+    "start": "concurrently --kill-others-on-fail --prefix-colors \"cyan,yellow,green,magenta,blue,red,white,gray,bgCyan,bgYellow,bgGreen\" --prefix \"[{name}]\" --names \"frontend,auth,user,product,order,cart,review,warehouse,admin,notification,upload\" \"npm run dev --prefix frontend\" \"npm start --prefix services/auth-service\" \"npm start --prefix services/user-service\" \"npm start --prefix services/product-service\" \"npm start --prefix services/order-service\" \"npm start --prefix services/cart-service\" \"npm start --prefix services/review-service\" \"npm start --prefix services/warehouse-service\" \"npm start --prefix services/admin-service\" \"npm start --prefix services/notification-service\" \"npm start --prefix services/upload-service\"",
+    "install:all": "npm install --prefix frontend && npm install --prefix services/auth-service && npm install --prefix services/user-service && npm install --prefix services/product-service && npm install --prefix services/order-service && npm install --prefix services/cart-service && npm install --prefix services/review-service && npm install --prefix services/warehouse-service && npm install --prefix services/admin-service && npm install --prefix services/notification-service && npm install --prefix services/upload-service"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
