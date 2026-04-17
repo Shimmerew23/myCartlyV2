@@ -1,12 +1,60 @@
-# CartLy — Full-Stack MERN eCommerce Platform
+# CartLy — Full-Stack MERN eCommerce Platform (Microservices)
 
-A production-grade, enterprise-level eCommerce platform built with the MERN stack (MongoDB, Express.js, React, Node.js), featuring comprehensive security, real-time features, and a modern editorial design aesthetic.
+A production-grade, enterprise-level eCommerce platform built with the MERN stack (MongoDB, Express.js, React, Node.js). The backend has been fully migrated from a monolithic architecture to **10 independent microservices**, each with its own database connection, routes, and deployment lifecycle.
+
+---
+
+## Architecture Overview
+
+```
+                        ┌─────────────┐
+                        │   Frontend  │  React 18 + TypeScript (port 5173)
+                        └──────┬──────┘
+                               │ HTTP / REST
+              ┌────────────────┼────────────────┐
+              ▼                ▼                 ▼
+       ┌─────────────┐  ┌──────────────┐  ┌──────────────┐
+       │ auth-service│  │user-service  │  │product-service│
+       │   :3001     │  │    :3002     │  │    :3003      │
+       └─────────────┘  └──────────────┘  └──────────────┘
+       ┌─────────────┐  ┌──────────────┐  ┌──────────────┐
+       │order-service│  │ cart-service │  │review-service│
+       │   :3004     │  │    :3005     │  │    :3006     │
+       └─────────────┘  └──────────────┘  └──────────────┘
+       ┌──────────────┐ ┌──────────────┐  ┌──────────────┐
+       │warehouse-svc │ │ admin-service│  │notification  │
+       │   :3007      │ │    :3008     │  │    :3009     │
+       └──────────────┘ └──────────────┘  └──────────────┘
+                        ┌──────────────┐
+                        │upload-service│
+                        │    :3010     │
+                        └──────────────┘
+```
+
+Each service is a standalone Express.js application with its own `package.json`, `Dockerfile`, `.env`, and internal route/controller/model structure.
+
+---
+
+## Microservices
+
+| Service | Port | Responsibility |
+|---|---|---|
+| `auth-service` | 3001 | Login, register, OAuth, JWT, password reset, email verify |
+| `user-service` | 3002 | Profiles, addresses, seller upgrade, wishlist |
+| `product-service` | 3003 | Product CRUD, search, categories, wishlist toggle |
+| `order-service` | 3004 | Order lifecycle, Stripe payments, returns |
+| `cart-service` | 3005 | Cart operations, coupon application |
+| `review-service` | 3006 | Product reviews, ratings, helpful votes |
+| `warehouse-service` | 3007 | Parcel scanning, check-in, carrier management |
+| `admin-service` | 3008 | Dashboard, user/product management, audit logs, coupons |
+| `notification-service` | 3009 | Email delivery, templates (internal — no public routes) |
+| `upload-service` | 3010 | Image upload, Sharp processing, Cloudinary storage |
 
 ---
 
 ## Tech Stack
 
-### Backend
+### Backend (per service)
 | Layer | Technology |
 |---|---|
 | Runtime | Node.js 20 |
@@ -21,8 +69,6 @@ A production-grade, enterprise-level eCommerce platform built with the MERN stac
 | Validation | Joi + Celebrate + express-validator |
 | Logging | Winston + Morgan |
 | Caching | apicache + Redis |
-| Slug Generation | slugify |
-| Unique IDs | uuid |
 
 ### Frontend
 | Layer | Technology |
@@ -35,22 +81,19 @@ A production-grade, enterprise-level eCommerce platform built with the MERN stac
 | Forms | React Hook Form + Zod |
 | Animation | Framer Motion |
 | Charts | Recharts |
-| HTTP | Axios (with interceptors, token refresh, and per-route 401 handling) |
-| File Uploads | React Dropzone |
+| HTTP | Axios (with interceptors, token refresh, per-route 401 handling) |
 | Payments | Stripe.js + @stripe/react-stripe-js |
 | Icons | Lucide React |
 | Carousel | Swiper |
 | Notifications | React Hot Toast |
-| Date Utilities | date-fns |
-| Image Gallery | react-image-gallery |
-| Utilities | clsx, tailwind-merge, js-cookie |
 
 ### Infrastructure
 | Layer | Technology |
 |---|---|
 | Containerization | Docker + Docker Compose |
 | Reverse Proxy | Nginx (rate-limiting, compression, static files) |
-| Process | Graceful shutdown, Cluster-ready |
+| Monorepo Runner | concurrently (root `package.json`) |
+| Process | Graceful shutdown, cluster-ready |
 
 ---
 
@@ -79,18 +122,13 @@ A production-grade, enterprise-level eCommerce platform built with the MERN stac
 - Response caching via Redis (`apicache`) with automatic invalidation
 - Compression — gzip responses (threshold: 1KB)
 - ETag — conditional requests for client-side caching
-- Image optimization — Sharp resizes & converts to WebP before upload
-- Cloud image storage — Cloudinary (persistent across deploys, CDN-served, UUID-namespaced public IDs prevent cross-user collisions)
-- Old image cleanup — previous avatar/logo/banner/product images are deleted from Cloudinary when replaced
+- Image optimization — Sharp resizes & converts to WebP before Cloudinary upload
+- Cloud image storage — Cloudinary (CDN-served, UUID-namespaced public IDs prevent cross-user collisions)
+- Old image cleanup — previous avatar/logo/banner/product images deleted from Cloudinary on replace
 - Full-text search — MongoDB text indexes
 - Audit Logs — every admin action tracked in DB (90-day TTL)
 - Performance timing — slow request detection (>1000ms)
 - Request IDs — traceable across request lifecycle
-
-### Validation
-- Joi + Celebrate schemas — server-side request validation
-- Zod schemas — client-side form validation
-- Mongoose pre-validation — schema-level constraints
 
 ---
 
@@ -120,7 +158,6 @@ A production-grade, enterprise-level eCommerce platform built with the MERN stac
 - Product analytics (views, sales, revenue)
 - Variant support (sizes, colors, etc.)
 - SEO fields (meta title, description)
-- Seller profile management
 
 ### For Admins
 - Real-time dashboard with charts (Recharts)
@@ -148,55 +185,37 @@ A production-grade, enterprise-level eCommerce platform built with the MERN stac
 ---
 
 ## Project Structure
+
 <details>
   <summary>📂 Project Structure</summary>
 
 ```text
-theCartLy/
-├── backend/
-│   ├── config/
-│   │   ├── cloudinary.js       # Cloudinary client, uploadBuffer (UUID public_id), deleteImage helpers
-│   │   ├── db.js               # MongoDB connection
-│   │   ├── passport.js         # Passport strategies (Google, JWT)
-│   │   └── redis.js            # Redis client setup
-│   ├── controllers/
-│   │   ├── authController.js      # register, login, logout, OAuth, password reset, email verify
-│   │   ├── carrierController.js   # Shipping carrier CRUD
-│   │   ├── orderController.js     # Order create/read/update, Stripe webhook
-│   │   ├── productController.js   # Product CRUD, seller products, wishlist, stats
-│   │   ├── warehouseController.js # Warehouse CRUD + parcel scan + check-in
-│   │   └── index.js               # Re-exports all controller functions
-│   ├── middleware/
-│   │   └── index.js            # authenticate, RBAC, rate limiters, upload (Cloudinary), validate, cache, audit
-│   ├── models/
-│   │   ├── Carrier.js          # Shipping carrier schema
-│   │   ├── Order.js            # Order schema (statusHistory includes warehouseName)
-│   │   ├── Product.js          # Product schema
-│   │   ├── User.js             # User schema (user/seller/admin/superadmin/warehouse)
-│   │   ├── Warehouse.js        # Warehouse entity schema (linked to User manager)
-│   │   └── index.js            # Re-exports all models
-│   ├── routes/
-│   │   └── index.js            # All route definitions (auth, products, orders, admin, etc.)
-│   ├── utils/
-│   │   ├── ApiError.js         # Custom error class
-│   │   ├── ApiResponse.js      # Standardized response wrapper
-│   │   ├── email.js            # Nodemailer email service
-│   │   ├── jwt.js              # JWT sign/verify helpers
-│   │   ├── logger.js           # Winston logger
-│   │   └── seeder.js           # DB seed script
-│   ├── logs/
-│   │   ├── combined.log
-│   │   ├── error.log
-│   │   ├── exceptions.log
-│   │   └── rejections.log
-│   ├── server.js               # Express entry point
-│   ├── .env.example
-│   ├── Dockerfile
-│   └── package.json
+myCartlyV2/
+├── services/
+│   ├── auth-service/         # :3001 — login, register, OAuth, JWT, password reset
+│   │   ├── config/           # db.js, redis.js, passport.js
+│   │   ├── controllers/
+│   │   ├── middleware/
+│   │   ├── models/           # User
+│   │   ├── routes/
+│   │   ├── utils/            # ApiError, ApiResponse, email, jwt, logger
+│   │   ├── server.js
+│   │   ├── .env.example
+│   │   ├── Dockerfile
+│   │   └── package.json
+│   ├── user-service/         # :3002 — profiles, addresses, wishlist, become-seller
+│   ├── product-service/      # :3003 — product CRUD, search, categories
+│   ├── order-service/        # :3004 — orders, Stripe, returns
+│   ├── cart-service/         # :3005 — cart operations, coupons
+│   ├── review-service/       # :3006 — reviews, ratings, helpful votes
+│   ├── warehouse-service/    # :3007 — parcel scanner, check-in, carriers
+│   ├── admin-service/        # :3008 — dashboard, users, audit logs, coupons
+│   ├── notification-service/ # :3009 — email delivery (internal, no public routes)
+│   └── upload-service/       # :3010 — image upload, Sharp, Cloudinary
 ├── frontend/
 │   ├── src/
 │   │   ├── api/
-│   │   │   └── axios.ts        # Axios instance with interceptors + token refresh
+│   │   │   └── axios.ts            # Axios instance + interceptors + token refresh
 │   │   ├── components/
 │   │   │   ├── auth/
 │   │   │   │   └── ProtectedRoute.tsx
@@ -259,26 +278,23 @@ theCartLy/
 │   │   │   │   ├── cartSlice.ts
 │   │   │   │   ├── productSlice.ts
 │   │   │   │   └── uiSlice.ts
-│   │   │   └── index.ts        # Redux store configuration
+│   │   │   └── index.ts
 │   │   ├── types/
-│   │   │   └── index.ts        # TypeScript interfaces & types
+│   │   │   └── index.ts
 │   │   ├── utils/
-│   │   │   └── fuzzy.ts        # Fuzzy search utility
+│   │   │   └── fuzzy.ts
 │   │   ├── App.tsx
-│   │   ├── index.css           # Tailwind + custom design system
+│   │   ├── index.css
 │   │   └── main.tsx
 │   ├── Dockerfile
-│   ├── index.html
-│   ├── nginx-spa.conf          # Nginx SPA config
+│   ├── nginx-spa.conf
 │   ├── package.json
-│   ├── postcss.config.js
-│   ├── tailwind.config.js
-│   ├── tsconfig.json
-│   ├── tsconfig.node.json
 │   └── vite.config.ts
+├── backend/                  # Legacy monolith (reference only — not used in dev/prod scripts)
 ├── docker-compose.yml
+├── mongo-init.js             # MongoDB initialization script
 ├── nginx.conf
-└── README.md
+└── package.json              # Monorepo root — runs all services via concurrently
 ```
 </details>
 
@@ -286,7 +302,7 @@ theCartLy/
 
 ## API Routes Reference
 
-### Auth (`/api/auth`)
+### Auth Service — `http://localhost:3001/api/auth`
 | Method | Route | Access |
 |---|---|---|
 | POST | `/register` | Public |
@@ -301,7 +317,7 @@ theCartLy/
 | GET | `/google` | OAuth |
 | GET | `/google/callback` | OAuth |
 
-### Products (`/api/products`)
+### Product Service — `http://localhost:3003/api/products`
 | Method | Route | Access |
 |---|---|---|
 | GET | `/` | Public |
@@ -315,7 +331,7 @@ theCartLy/
 | DELETE | `/:id` | Seller (own) |
 | POST | `/:id/wishlist` | Private |
 
-### Orders (`/api/orders`)
+### Order Service — `http://localhost:3004/api/orders`
 | Method | Route | Access |
 |---|---|---|
 | POST | `/` | Private |
@@ -326,7 +342,30 @@ theCartLy/
 | POST | `/:id/return` | Private |
 | POST | `/webhook` | Stripe |
 
-### Admin (`/api/admin`)
+### Cart Service — `http://localhost:3005/api/cart`
+| Method | Route | Access |
+|---|---|---|
+| GET | `/` | Private |
+| POST | `/` | Private |
+| PUT | `/:itemId` | Private |
+| DELETE | `/:itemId` | Private |
+| DELETE | `/` | Private |
+
+### Review Service — `http://localhost:3006/api/reviews`
+| Method | Route | Access |
+|---|---|---|
+| POST | `/:productId` | Private |
+| PUT | `/:id` | Private (own) |
+| DELETE | `/:id` | Private (own) |
+
+### Warehouse Service — `http://localhost:3007/api/warehouse`
+| Method | Route | Access |
+|---|---|---|
+| GET | `/scan?q=` | Warehouse |
+| PUT | `/orders/:id/check-in` | Warehouse |
+| GET/POST/PUT/DELETE | `/carriers` | Admin/Warehouse |
+
+### Admin Service — `http://localhost:3008/api/admin`
 | Method | Route | Access |
 |---|---|---|
 | GET | `/dashboard` | Admin |
@@ -337,22 +376,12 @@ theCartLy/
 | GET | `/products` | Admin |
 | GET | `/orders` | Admin |
 | GET/POST/DELETE | `/coupons` | Admin |
-| GET/POST/PUT/DELETE | `/carriers` | Admin |
 | GET/POST/PUT/DELETE | `/categories` | Admin |
 | GET/DELETE | `/feedback` | Admin |
 | GET | `/audit-logs` | Superadmin |
-| GET | `/warehouses` | Admin |
-| POST | `/warehouses` | Admin |
-| PUT | `/warehouses/:id` | Admin |
-| DELETE | `/warehouses/:id` | Admin |
+| GET/POST/PUT/DELETE | `/warehouses` | Admin |
 
-### Warehouse (`/api/warehouse`)
-| Method | Route | Access |
-|---|---|---|
-| GET | `/scan?q=` | Warehouse |
-| PUT | `/orders/:id/check-in` | Warehouse |
-
-### User (`/api/users`)
+### User Service — `http://localhost:3002/api/users`
 | Method | Route | Access |
 |---|---|---|
 | PUT | `/profile` | Private |
@@ -360,36 +389,17 @@ theCartLy/
 | POST | `/become-seller` | Private |
 | GET | `/wishlist` | Private |
 
-### Cart (`/api/cart`)
+### Upload Service — `http://localhost:3010/api/upload`
 | Method | Route | Access |
 |---|---|---|
-| GET | `/` | Private |
-| POST | `/` | Private |
-| PUT | `/:itemId` | Private |
-| DELETE | `/:itemId` | Private |
-| DELETE | `/` | Private |
+| POST | `/image` | Private |
 
-### Reviews (`/api/reviews`)
+### Feedback — (via Admin or User Service)
 | Method | Route | Access |
 |---|---|---|
-| POST | `/:productId` | Private |
-| PUT | `/:id` | Private (own) |
-| DELETE | `/:id` | Private (own) |
-
-### Carriers (`/api/carriers`)
-| Method | Route | Access |
-|---|---|---|
-| GET | `/` | Public |
-| POST | `/` | Admin |
-| PUT | `/:id` | Admin |
-| DELETE | `/:id` | Admin |
-
-### Feedback (`/api/feedback`)
-| Method | Route | Access |
-|---|---|---|
-| POST | `/` | Private |
-| GET | `/` | Admin |
-| DELETE | `/:id` | Admin |
+| POST | `/feedback` | Private |
+| GET | `/feedback` | Admin |
+| DELETE | `/feedback/:id` | Admin |
 
 ---
 
@@ -402,33 +412,34 @@ theCartLy/
 - Cloudinary account (free tier)
 - (Optional) Docker + Docker Compose
 
-### Option A — Manual Setup
+### Option A — Manual Setup (Monorepo)
 
-**1. Install dependencies**
+**1. Install all dependencies**
 ```bash
-cd backend && npm install
-cd ../frontend && npm install
+npm run install:all
 ```
 
-**2. Configure environment**
+**2. Configure environment for each service**
 ```bash
-cp backend/.env.example backend/.env
-# Edit backend/.env with your values
+# Copy .env.example to .env in each service and fill in your values
+cp services/auth-service/.env.example services/auth-service/.env
+cp services/user-service/.env.example services/user-service/.env
+cp services/product-service/.env.example services/product-service/.env
+cp services/order-service/.env.example services/order-service/.env
+cp services/cart-service/.env.example services/cart-service/.env
+cp services/review-service/.env.example services/review-service/.env
+cp services/warehouse-service/.env.example services/warehouse-service/.env
+cp services/admin-service/.env.example services/admin-service/.env
+cp services/notification-service/.env.example services/notification-service/.env
+cp services/upload-service/.env.example services/upload-service/.env
 ```
 
-**3. Seed the database**
+**3. Start all services + frontend**
 ```bash
-cd backend && npm run seed
+npm run dev
 ```
 
-**4. Start services**
-```bash
-# Terminal 1 — Backend
-cd backend && npm run dev
-
-# Terminal 2 — Frontend
-cd frontend && npm run dev
-```
+This uses `concurrently` to launch all 10 backend services plus the Vite dev server simultaneously with color-coded prefixed output.
 
 Open: `http://localhost:5173`
 
@@ -437,14 +448,10 @@ Open: `http://localhost:5173`
 ### Option B — Docker Compose
 
 ```bash
-# Copy and edit env file first
-cp backend/.env.example backend/.env
+# Copy and edit env files first (see above)
 
 # Start everything
 docker-compose up --build
-
-# Seed the database (first time)
-docker-compose exec backend node utils/seeder.js
 ```
 
 Open: `http://localhost`
@@ -452,13 +459,13 @@ Open: `http://localhost`
 Docker services:
 - **MongoDB** (mongo:7.0) — port 27017
 - **Redis** (redis:7.2-alpine) — port 6379
-- **Backend** (Node.js) — port 5000
+- **All 10 backend services** — ports 3001–3010
 - **Frontend** (React/Vite) — port 80
 - **Nginx** — ports 80 / 443 (reverse proxy)
 
 ---
 
-## Default Test Accounts (after seeding)
+## Default Test Accounts
 
 | Role | Email | Password |
 |---|---|---|
@@ -472,12 +479,12 @@ Docker services:
 
 ## Environment Variables
 
-Full template in `backend/.env.example`. Key variables:
+Each service has its own `.env.example`. Key variables shared across services:
 
 ```env
 # Server
 NODE_ENV=development
-PORT=5000
+PORT=300x               # 3001–3010 per service
 FRONTEND_URL=http://localhost:5173
 
 # Database
@@ -486,22 +493,22 @@ MONGODB_URI=mongodb://localhost:27017/CartLy_ecommerce
 # Redis
 REDIS_URL=redis://localhost:6379
 
-# JWT
+# JWT (auth-service)
 JWT_SECRET=your-32-char-minimum-secret
 JWT_ACCESS_EXPIRE=15m
 JWT_REFRESH_SECRET=your-refresh-secret
 JWT_REFRESH_EXPIRE=7d
 JWT_COOKIE_EXPIRE=7
 
-# OAuth — Google
+# OAuth — Google (auth-service)
 GOOGLE_CLIENT_ID=...
 GOOGLE_CLIENT_SECRET=...
-GOOGLE_CALLBACK_URL=http://localhost:5000/api/auth/google/callback
+GOOGLE_CALLBACK_URL=http://localhost:3001/api/auth/google/callback
 
-# Session
+# Session (auth-service)
 SESSION_SECRET=your-session-secret
 
-# Email (Nodemailer)
+# Email (notification-service)
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 SMTP_USER=your_email@gmail.com
@@ -509,14 +516,13 @@ SMTP_PASS=your_app_password
 FROM_NAME=CartLy
 FROM_EMAIL=noreply@CartLy.com
 
-# Stripe
+# Stripe (order-service)
 STRIPE_SECRET_KEY=sk_test_...
 STRIPE_WEBHOOK_SECRET=whsec_...
 
-# Cloudinary — cloud image storage (required in production)
-# Option A — single URL
+# Cloudinary (upload-service, product-service, user-service)
 CLOUDINARY_URL=cloudinary://<api_key>:<api_secret>@<cloud_name>
-# Option B — individual vars
+# or individual vars:
 CLOUDINARY_CLOUD_NAME=...
 CLOUDINARY_API_KEY=...
 CLOUDINARY_API_SECRET=...
@@ -534,7 +540,7 @@ CRYPTO_SECRET=your-crypto-secret-32-chars-minimum
 
 ## Design System
 
-The UI follows an **editorial/luxury** aesthetic inspired by high-end fashion and editorial publications:
+The UI follows an **editorial/luxury** aesthetic:
 
 - **Typography**: Manrope (headlines) + Plus Jakarta Sans (body) + JetBrains Mono (code)
 - **Color**: Deep navy `#1A237E` primary, neutral surfaces, precise accent system
@@ -553,7 +559,7 @@ The UI follows an **editorial/luxury** aesthetic inspired by high-end fashion an
 - Rate limit zones: API (30 req/min), Auth (10 req/min)
 - Gzip compression (level 6)
 - Security headers: `X-Frame-Options`, `X-Content-Type-Options`, `X-XSS-Protection`, `Referrer-Policy`
-- Reverse proxy to backend (`/api/`) and frontend (`/`)
+- Reverse proxy to backend services and frontend
 
 `frontend/nginx-spa.conf` handles SPA fallback (`try_files $uri /index.html`).
 
@@ -561,39 +567,43 @@ The UI follows an **editorial/luxury** aesthetic inspired by high-end fashion an
 
 ## Production Deployment
 
-1. Set `NODE_ENV=production` in `.env`
+1. Set `NODE_ENV=production` in all service `.env` files
 2. Use strong, unique secrets for all JWT/session keys
 3. Configure HTTPS in Nginx (add SSL certificates)
 4. Set up MongoDB Atlas or a managed MongoDB cluster
 5. Use managed Redis (Redis Cloud / Upstash)
-6. Configure Stripe webhooks pointing to `/api/orders/webhook`
-7. Set `CLOUDINARY_URL` (or the three individual vars) — images are uploaded directly to Cloudinary and served via CDN
+6. Configure Stripe webhooks pointing to `http://<your-domain>/api/orders/webhook` (routed to order-service)
+7. Set `CLOUDINARY_URL` in upload/product/user services
 8. Configure a production SMTP service (SendGrid, Resend, Postmark, etc.)
 
 ---
 
 ## Changelog
 
+### v2 — Microservices Migration
+- **Architecture rewrite** — Monolithic `backend/` fully decomposed into **10 independent Express microservices** (`services/`), each running on its own port (3001–3010) with its own DB connection, Dockerfile, and `.env`.
+- **Monorepo setup** — Root `package.json` uses `concurrently` to start all services and the frontend in parallel with color-coded terminal output (`npm run dev`).
+- **`mongo-init.js`** — Added MongoDB initialization script for Docker-based bootstrapping.
+- **Service isolation** — `notification-service` has no public routes (internal email delivery); `upload-service` has no DB connection (stateless image processor).
+
 ### Warehouse System
-- **Warehouse role** — Added a fifth user role (`warehouse`) alongside user / seller / admin / superadmin. Warehouse accounts are standard User records with a dedicated role, reusing all existing JWT/auth infrastructure.
-- **Warehouse model** — New `Warehouse` Mongoose model stores warehouse name, unique code, address subdocument, linked manager (User ref), active status, and notes. A `locationLabel` virtual returns `"Name — City, State"`.
-- **Admin warehouse management** — Admins can create, edit, activate/deactivate, and delete warehouse accounts from `/admin/warehouses`. Creating a warehouse auto-creates a linked User account and emails temporary credentials to the provided address.
-- **Warehouse portal** — Warehouse staff land at `/warehouse/scan` after login (role-based redirect). The parcel scanner accepts an order number (e.g. `CUR-xxx`) or MongoDB ID and returns full order details including items, shipping address, tracking info, and status history.
-- **Parcel check-in** — Warehouse staff can select from status-appropriate actions (Mark as Processing, Shipped, Out for Delivery, Delivered, Location Update). Marking as Shipped requires a tracking number. Each check-in records the warehouse name in the order's `statusHistory` for full traceability.
-- **Order status history** — `statusHistory` entries now include a `warehouseName` field populated automatically when a warehouse account performs a check-in.
-- **Admin warehouse edit** — The action menu (⋮) in the warehouses table now includes an Edit option that opens a pre-filled modal for updating warehouse info, address, and account name. Account email is read-only (delete and recreate to change).
-- **Admin warehouse action menu scroll fix** — Removed `overflow-hidden` from the table card and added an outside-click handler via `useRef` + `mousedown` so the dropdown menu no longer causes the page to scroll or get clipped.
+- **Warehouse role** — Added a fifth user role (`warehouse`) alongside user / seller / admin / superadmin.
+- **Warehouse model** — New `Warehouse` Mongoose model with name, code, address, linked manager, active status, and `locationLabel` virtual.
+- **Admin warehouse management** — Admins can create, edit, activate/deactivate, and delete warehouse accounts. Creating a warehouse auto-creates a linked User account and emails temporary credentials.
+- **Warehouse portal** — Staff land at `/warehouse/scan` after login. Parcel scanner accepts order number or MongoDB ID.
+- **Parcel check-in** — Status-appropriate actions with tracking number capture; each check-in records `warehouseName` in `statusHistory`.
+- **Admin action menu fix** — Removed `overflow-hidden` + added outside-click handler so the dropdown no longer clips or causes page scroll.
 
-### Fixes & Improvements
+### Auth & Security
+- **Google OAuth fixed** — Callback now sets auth cookies and redirects to `/oauth/callback?token=...`; new `OAuthCallback` page hydrates Redux then navigates home.
+- **Facebook OAuth removed** — Strategy, routes, and login button removed. Google is the only OAuth provider.
+- **Auth error messages** — Login failures now surface the correct API message instead of Axios's generic 401 string. Auth endpoints excluded from the refresh retry interceptor.
+- **Auth rate limiter** — Window reduced from 15min to 5min; IP counter cleared automatically after a successful login.
 
-- **Cloudinary image storage** — Images (product photos, avatars, store logos/banners) are now uploaded directly to Cloudinary and served via CDN instead of being saved to the local server filesystem. This fixes image persistence on ephemeral platforms like Render's free tier. Sharp still handles resizing and WebP conversion before the upload. Supports both `CLOUDINARY_URL` and individual credential vars.
-- **Unique Cloudinary public IDs** — Every upload is assigned a UUID-based `public_id` (e.g. `cartly/avatars/3f2a1b4c-...`) so no two users can ever overwrite each other's files, even if they upload images with the same filename.
-- **Automatic old image cleanup** — When a user replaces their avatar, store logo, store banner, or product images, the previous Cloudinary asset is deleted automatically using the stored `public_id`. The `public_id` is persisted in MongoDB alongside the image URL.
-- **Auth error messages** — Login failures (wrong email/password) now correctly surface the API message (`"Invalid email or password"`) instead of the generic Axios `"Request failed with status code 401"`. Root cause: the response interceptor was attempting a token refresh on every 401, including intentional login failures. Auth endpoints (`/auth/login`, `/auth/register`) are now excluded from the refresh retry logic.
-- **Auth rate limiter window** — Reduced from 15 minutes to 5 minutes per window.
-- **Auth rate limiter reset** — The `authLimiter` IP counter is now cleared automatically after a successful login, so a legitimate user who previously failed attempts is not penalized for the rest of the window.
-- **Google OAuth fixed** — The OAuth callback previously returned JSON (`ApiResponse.success`), which left the browser stranded at the backend callback URL. The `oauthCallback` handler now sets auth cookies and redirects to `/oauth/callback?token=...` on the frontend. A new `OAuthCallback` page reads the token, stores it in `localStorage`, calls `/auth/me` to hydrate Redux, then navigates to home.
-- **Facebook OAuth removed** — The Facebook OAuth strategy, routes (`/api/auth/facebook`, `/api/auth/facebook/callback`), and login button have been removed. Google is the only supported OAuth provider.
+### Images & Storage
+- **Cloudinary migration** — All images (avatars, logos, banners, product photos) uploaded to Cloudinary and served via CDN. Fixes persistence on ephemeral platforms like Render.
+- **UUID public IDs** — Every upload gets a `cartly/<folder>/<uuid>` public ID preventing cross-user file collisions.
+- **Old image cleanup** — Previous Cloudinary assets deleted automatically when replaced; `public_id` stored in MongoDB alongside the URL.
 
 ---
 
